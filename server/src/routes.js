@@ -1,6 +1,7 @@
 import Router from '@koa/router'
 import {
   searchFund,
+  searchFundsByKeyword,
   getFundsQuotes,
   getFundQuote,
   getFundMatiaria,
@@ -47,6 +48,25 @@ router.get('/funds/search', async (ctx) => {
     ctx.body = {success: true, data}
   } catch (e) {
     ctx.status = 400
+    ctx.body = {success: false, message: e.message}
+  }
+})
+
+/**
+ * 按关键词模糊搜索基金（支持代码或名称）
+ * query: q=关键词
+ */
+router.get('/funds/suggest', async (ctx) => {
+  try {
+    const q = String(ctx.query.q || '').trim()
+    if (!q) {
+      ctx.body = {success: true, data: []}
+      return
+    }
+    const data = await searchFundsByKeyword(q)
+    ctx.body = {success: true, data}
+  } catch (e) {
+    ctx.status = 500
     ctx.body = {success: false, message: e.message}
   }
 })

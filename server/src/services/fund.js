@@ -77,6 +77,43 @@ export async function searchFund(code) {
   }
 }
 
+/**
+ * 按关键词模糊搜索基金（支持基金代码或名称）
+ * 调用东方财富基金搜索 API，返回匹配列表
+ */
+export async function searchFundsByKeyword(keyword) {
+  const key = String(keyword || '').trim()
+  if (!key) return []
+
+  const url = 'https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx'
+  const res = await axios.get(url, {
+    params: {m: 1, key},
+    httpsAgent: agent,
+    timeout: 10000,
+    headers: {
+      'User-Agent': ua,
+      Referer: 'https://fund.eastmoney.com/',
+    },
+    validateStatus: () => true,
+  })
+
+  let body = res.data
+  if (typeof body === 'string') {
+    // 处理可能的 JSONP 包裹
+    const jsonMatch = body.match(/\{[\s\S]*\}/)
+    if (jsonMatch) body = JSON.parse(jsonMatch[0])
+    else return []
+  }
+  if (!body || body.ErrCode !== 0 || !Array.isArray(body.Datas)) return []
+
+  return body.Datas.slice(0, 15).map((item) => ({
+    code: item.CODE || item.FundBaseInfo?.FCODE || '',
+    name: item.NAME || item.FundBaseInfo?.SHORTNAME || '',
+    fundType: item.FundBaseInfo?.FTYPE || '',
+    shortName: item.FundBaseInfo?.SHORTNAME || item.NAME || '',
+  })).filter((item) => item.code && item.name)
+}
+
 const mobileUa =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'
 

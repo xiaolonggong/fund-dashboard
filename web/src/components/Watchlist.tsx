@@ -14,10 +14,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
 import {Panel, PanelHeader} from '@/components/ui/panel'
 import {SparkTrend} from '@/components/SparkTrend'
+import {FundSearchInput} from '@/components/FundSearchInput'
 
 export function Watchlist({
   rows,
@@ -153,15 +153,27 @@ function AddWatchDialog({
   onOpenChange: (value: boolean) => void
   onAdded: () => void
 }) {
-  const [code, setCode] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     if (!open) return
-    setCode('')
     setError('')
   }, [open])
+
+  async function handleSelect(fund: {code: string}) {
+    setSaving(true)
+    setError('')
+    try {
+      await createWatchFund(fund.code)
+      onOpenChange(false)
+      onAdded()
+    } catch (err: unknown) {
+      setError((err as Error).message || '添加失败')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -169,47 +181,22 @@ function AddWatchDialog({
         <DialogHeader>
           <DialogTitle>添加自选基金</DialogTitle>
         </DialogHeader>
-        <form
-          onSubmit={async (event) => {
-            event.preventDefault()
-            if (!/^\d{6}$/.test(code.trim())) {
-              setError('请输入 6 位基金代码')
-              return
-            }
-            setSaving(true)
-            setError('')
-            try {
-              await createWatchFund(code.trim())
-              onOpenChange(false)
-              onAdded()
-            } catch (err: unknown) {
-              setError((err as Error).message || '添加失败')
-            } finally {
-              setSaving(false)
-            }
-          }}
-        >
-          <Label htmlFor="watch-code">基金代码</Label>
-          <Input
-            id="watch-code"
-            className="mt-2 font-mono"
-            value={code}
-            maxLength={6}
-            inputMode="numeric"
+        <div className="space-y-3">
+          <Label>搜索基金</Label>
+          <FundSearchInput
             autoFocus
-            placeholder="例如 000001"
-            onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+            disabled={saving}
+            placeholder="输入基金代码或名称搜索"
+            onSelect={handleSelect}
           />
-          {error ? <p className="mt-3 text-sm text-rise">{error}</p> : null}
-          <div className="mt-5 flex justify-end gap-2">
+          {saving ? <p className="text-sm text-muted">正在添加…</p> : null}
+          {error ? <p className="text-sm text-rise">{error}</p> : null}
+          <div className="flex justify-end pt-2">
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              取消
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? '识别中' : '添加自选'}
+              关闭
             </Button>
           </div>
-        </form>
+        </div>
       </DialogContent>
     </Dialog>
   )

@@ -13,8 +13,24 @@ Write-Host ''
 Write-Host ' Fund Dashboard'
 Write-Host ' ------------------------------'
 
+# --- Locate Node.js ---
+# 1) Check if node.exe is already in system PATH
 if (-not (Get-Command node.exe -ErrorAction SilentlyContinue)) {
-  throw 'Node.js was not found. Install Node.js 20 or later: https://nodejs.org/'
+  # 2) Fallback: search for WorkBuddy managed Node.js installations
+  $wbNodeBase = Join-Path $env:USERPROFILE '.workbuddy\binaries\node\versions'
+  $wbNode = $null
+  if (Test-Path -LiteralPath $wbNodeBase) {
+    $wbNode = Get-ChildItem -Path $wbNodeBase -Directory |
+      Sort-Object Name -Descending |
+      Select-Object -First 1 |
+      Where-Object { Test-Path (Join-Path $_.FullName 'node.exe') }
+  }
+  if ($wbNode -and (Test-Path (Join-Path $wbNode.FullName 'node.exe'))) {
+    Write-Host "[Info] Using WorkBuddy managed Node.js: $($wbNode.FullName)"
+    $env:PATH = "$($wbNode.FullName);$env:PATH"
+  } else {
+    throw 'Node.js was not found. Install Node.js 20 or later: https://nodejs.org/'
+  }
 }
 
 if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {

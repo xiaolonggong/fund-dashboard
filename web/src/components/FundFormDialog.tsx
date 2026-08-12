@@ -1,5 +1,4 @@
 import {useEffect, useState} from 'react'
-import {Search} from 'lucide-react'
 import {
   resolveFund,
   type AmountBasis,
@@ -16,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {FundSearchInput} from '@/components/FundSearchInput'
 
 export function FundFormDialog({
   open,
@@ -87,13 +87,15 @@ export function FundFormDialog({
           className="space-y-4"
           onSubmit={async (event) => {
             event.preventDefault()
+            if (!meta) {
+              setError('请先搜索并选择基金')
+              return
+            }
             setSaving(true)
             setError('')
             try {
-              const resolved = meta || (await identify())
-              if (!resolved) return
               await onSubmit({
-                code: resolved.code,
+                code: meta.code,
                 totalCost: Number(totalCost),
                 amount: Number(amount),
                 amountBasis,
@@ -107,33 +109,22 @@ export function FundFormDialog({
           }}
         >
           <div className="space-y-1.5">
-            <Label htmlFor="fund-code">基金代码</Label>
-            <div className="flex gap-2">
-              <Input
-                id="fund-code"
-                value={code}
-                disabled={!!initial}
-                onBlur={() => {
-                  if (!initial && /^\d{6}$/.test(code) && !meta) void identify()
+            <Label>{initial ? '基金代码' : '搜索基金'}</Label>
+            {initial ? (
+              <Input value={code} disabled />
+            ) : (
+              <FundSearchInput
+                autoFocus
+                disabled={resolving}
+                onSelect={async (fund) => {
+                  setCode(fund.code)
+                  await identify(fund.code)
                 }}
-                onChange={(event) => {
-                  setCode(event.target.value.replace(/\D/g, '').slice(0, 6))
-                  setMeta(null)
-                }}
-                placeholder="如 001618"
-                inputMode="numeric"
-                required
               />
-              <Button
-                type="button"
-                variant="outline"
-                disabled={resolving || code.length !== 6}
-                onClick={() => void identify()}
-              >
-                <Search className="h-4 w-4" />
-                {resolving ? '识别中' : '识别'}
-              </Button>
-            </div>
+            )}
+            {resolving ? (
+              <p className="text-xs text-muted">正在识别基金信息…</p>
+            ) : null}
             {meta ? (
               <div className="rounded-md bg-paper-deep px-3 py-2 text-sm text-ink-soft">
                 <div className="font-medium text-ink">{meta.name}</div>

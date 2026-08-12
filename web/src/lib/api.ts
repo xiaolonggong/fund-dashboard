@@ -280,6 +280,22 @@ export async function resolveFund(code: string, type: 'hold' | 'watch' = 'hold')
   return assertOk(data).data
 }
 
+export type FundSearchResult = {
+  code: string
+  name: string
+  fundType: string
+  shortName: string
+}
+
+export async function searchFunds(keyword: string): Promise<FundSearchResult[]> {
+  const {data} = await api.get<{
+    success: boolean
+    message?: string
+    data: FundSearchResult[]
+  }>('/funds/suggest', {params: {q: keyword}})
+  return assertOk(data).data
+}
+
 export type AmountBasis = 'prev' | 'today'
 
 export function deriveHoldShares(
