@@ -53,6 +53,7 @@ export function PortfolioTable({
         totalCost: payload.totalCost,
         amount: payload.amount,
         amountBasis: payload.amountBasis,
+        portfolioId: payload.portfolioId,
       })
     } else {
       await createHolding(payload)

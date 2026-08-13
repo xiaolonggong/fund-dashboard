@@ -150,8 +150,7 @@ export function FundFormDialog({
               id="portfolio-select"
               value={portfolioId}
               onChange={(e) => setPortfolioId(e.target.value)}
-              disabled={!!initial}
-              className="w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent disabled:opacity-60"
+              className="w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent"
             >
               {portfolios.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -159,9 +158,6 @@ export function FundFormDialog({
                 </option>
               ))}
             </select>
-            {initial ? (
-              <p className="text-xs text-muted">如需调整组合归属，请删除后重新添加。</p>
-            ) : null}
           </div>
 
           <div className="space-y-1.5">

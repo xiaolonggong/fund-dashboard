@@ -432,7 +432,7 @@ export async function createHolding(payload: HoldingInput) {
   })
 }
 
-export async function updateHolding(id: string, payload: Omit<HoldingInput, 'code' | 'portfolioId'>) {
+export async function updateHolding(id: string, payload: Omit<HoldingInput, 'code'>) {
   if (!(payload.totalCost >= 0)) throw new Error('持仓成本不能小于 0')
   const existing = loadConfig().funds[id]
   if (!existing) throw new Error('持仓不存在')
@@ -444,6 +444,7 @@ export async function updateHolding(id: string, payload: Omit<HoldingInput, 'cod
     name: meta.name,
     fundKey: meta.fundKey,
     sectors: meta.sectors || [],
+    portfolioId: payload.portfolioId,
   })
 }
 
