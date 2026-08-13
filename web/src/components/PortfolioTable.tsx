@@ -306,7 +306,7 @@ function HoldingsTable({
                 <div className="flex items-center justify-center gap-1">
                   {otherPortfolios.length > 0 ? (
                     <select
-                      className="rounded border border-line bg-paper px-1 py-0.5 text-xs text-muted outline-none hover:text-ink"
+                      className="shrink-0 rounded border border-line bg-paper px-1 py-0.5 text-xs text-muted outline-none hover:text-ink"
                       value=""
                       onChange={(e) => {
                         if (e.target.value) onMove(row, e.target.value)
@@ -324,6 +324,7 @@ function HoldingsTable({
                   <Button
                     size="icon"
                     variant="ghost"
+                    className="shrink-0"
                     aria-label={`编辑 ${row.name}`}
                     onClick={() => onEdit(row)}
                   >
@@ -332,6 +333,7 @@ function HoldingsTable({
                   <Button
                     size="icon"
                     variant="ghost"
+                    className="shrink-0"
                     aria-label={`删除 ${row.name}`}
                     onClick={() => onDelete(row)}
                   >
