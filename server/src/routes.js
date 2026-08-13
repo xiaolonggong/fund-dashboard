@@ -13,6 +13,7 @@ import {
   isDelayedNavFund,
 } from './services/fund.js'
 import {getIndices, getIndexHistory, getMarketOverview} from './services/market.js'
+import {processQuotes, storeTrackedFunds, getAccuracyData, getAccuracySummary, runEveningComparison} from './services/estimateAccuracy.js'
 
 const router = new Router({prefix: '/api'})
 
@@ -187,6 +188,10 @@ router.post('/funds/quotes', async (ctx) => {
       : []
 
     const quotes = await getFundsQuotes(funds)
+    // 持久化基金列表（供定时任务使用）
+    try { storeTrackedFunds(funds) } catch { /* ignore */ }
+    // 捕获估值 + 对比净值（异步，不阻塞响应）
+    try { processQuotes(quotes) } catch { /* ignore */ }
     ctx.body = {success: true, data: {type, quotes, funds}}
   } catch (e) {
     ctx.status = 500
@@ -248,6 +253,36 @@ router.get('/funds/:code/history', async (ctx) => {
     ctx.body = {success: true, data}
   } catch (e) {
     ctx.status = 400
+    ctx.body = {success: false, message: e.message}
+  }
+})
+
+/**
+ * 估值准确率查询
+ * query: codes=001618,000001（逗号分隔，为空则返回全部）
+ */
+router.get('/funds/estimate-accuracy', async (ctx) => {
+  try {
+    const codesStr = String(ctx.query.codes || '').trim()
+    const codes = codesStr ? codesStr.split(',').map((c) => c.trim()).filter(Boolean) : []
+    const records = getAccuracyData(codes)
+    const summary = getAccuracySummary(codes)
+    ctx.body = {success: true, data: {records, summary}}
+  } catch (e) {
+    ctx.status = 500
+    ctx.body = {success: false, message: e.message}
+  }
+})
+
+/**
+ * 手动触发晚间对比任务
+ */
+router.post('/funds/estimate-accuracy/run', async (ctx) => {
+  try {
+    const result = await runEveningComparison()
+    ctx.body = {success: true, data: result}
+  } catch (e) {
+    ctx.status = 500
     ctx.body = {success: false, message: e.message}
   }
 })

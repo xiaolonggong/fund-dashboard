@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useState} from 'react'
-import {BarChart3, Database, Eye, LineChart, RefreshCw, TableProperties, WalletCards} from 'lucide-react'
+import {BarChart3, Database, Eye, LineChart, RefreshCw, TableProperties, Target, WalletCards} from 'lucide-react'
 import {
   fetchHoldings,
   fetchIndices,
@@ -12,6 +12,7 @@ import {
 } from '@/lib/api'
 import {Button} from '@/components/ui/button'
 import {ConfigDialog} from '@/components/ConfigDialog'
+import {EstimateAccuracy} from '@/components/EstimateAccuracy'
 import {IndicesDashboard} from '@/components/IndicesDashboard'
 import {MarketOverview} from '@/components/MarketOverview'
 import {Overview} from '@/components/Overview'
@@ -25,6 +26,7 @@ const SECTIONS = [
   {id: 'overview', label: '总览', icon: WalletCards},
   {id: 'funds', label: '持仓基金', icon: TableProperties},
   {id: 'watchlist', label: '自选基金', icon: Eye},
+  {id: 'accuracy', label: '估值准确率', icon: Target},
   {id: 'market', label: 'A股大盘', icon: BarChart3},
   {id: 'indices', label: '指数看板', icon: LineChart},
 ] as const
@@ -194,6 +196,7 @@ export default function App() {
             error={watchlistError}
             onChanged={() => void load(true)}
           />
+          <EstimateAccuracy loading={loading} />
           <MarketOverview data={market} loading={loading} error={marketError} />
           <IndicesDashboard
             items={indices}

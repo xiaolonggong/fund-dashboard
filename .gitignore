@@ -13,6 +13,7 @@ Thumbs.db
 # Personal portfolio data
 fund-backup/
 **/fund-dashboard-backup-*.json
+server/data/
 
 # Local reference materials, not part of the distributable project
 Source/

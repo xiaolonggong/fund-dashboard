@@ -382,3 +382,53 @@ export function exportConfig(): AppConfig {
 export function importConfig(payload: unknown): AppConfig {
   return importLocalConfig(payload)
 }
+
+/* ---------- 估值准确率 ---------- */
+
+export type AccuracyRecord = {
+  date: string
+  estimateNav: number | null
+  estimateGrowth: number | null
+  actualNav: number | null
+  actualGrowth: number | null
+  error: number | null
+  accurate: boolean | null
+}
+
+export type AccuracyFundData = {
+  name: string
+  ftype: string
+  records: AccuracyRecord[]
+}
+
+export type AccuracySummary = {
+  totalRecords: number
+  accurateCount: number
+  accuracyRate: number
+  avgError: number
+}
+
+export type AccuracyPayload = {
+  records: Record<string, AccuracyFundData>
+  summary: AccuracySummary
+}
+
+export async function fetchEstimateAccuracy(codes: string[]): Promise<AccuracyPayload> {
+  const {data} = await api.get<{
+    success: boolean
+    message?: string
+    data: AccuracyPayload
+  }>('/funds/estimate-accuracy', {
+    params: codes.length ? {codes: codes.join(',')} : {},
+  })
+  return assertOk(data).data
+}
+
+export async function triggerEstimateComparison(): Promise<{processed: number; funds: number; compared: number}> {
+  const {data} = await api.post<{
+    success: boolean
+    message?: string
+    data: {processed: number; funds: number; compared: number}
+  }>('/funds/estimate-accuracy/run')
+  return assertOk(data).data
+}

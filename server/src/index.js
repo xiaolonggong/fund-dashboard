@@ -5,6 +5,7 @@ import {createReadStream, existsSync, statSync} from 'node:fs';
 import {extname, join, normalize, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import router from './routes.js';
+import {runEveningComparison} from './services/estimateAccuracy.js';
 
 const app = new Koa();
 const PORT = Number(process.env.FUND_DASHBOARD_PORT) || 51888;
@@ -63,4 +64,44 @@ app.use(async (ctx) => {
 
 app.listen(PORT, HOST, () => {
   console.log(`基金看板已启动：http://${HOST}:${PORT}`);
+  scheduleEveningComparison();
 });
+
+// ── 每交易日 22:00 定时拉取净值并对比估值准确率 ──
+const EVENING_HOUR = 22; // 10 PM
+const EVENING_MINUTE = 0;
+
+function scheduleEveningComparison() {
+  function getNextDelay() {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(EVENING_HOUR, EVENING_MINUTE, 0, 0);
+    if (next <= now) {
+      next.setDate(next.getDate() + 1);
+    }
+    return next.getTime() - now.getTime();
+  }
+
+  async function tick() {
+    const now = new Date();
+    const day = now.getDay();
+    // 周末不执行（非交易日，净值不更新）
+    if (day === 0 || day === 6) {
+      console.log('[estimateAccuracy] 周末，跳过晚间对比');
+    } else {
+      console.log(`[estimateAccuracy] 定时任务触发 (${now.toLocaleString('zh-CN')})`);
+      try {
+        await runEveningComparison();
+      } catch (e) {
+        console.error('[estimateAccuracy] 定时任务异常:', e.message);
+      }
+    }
+    // 安排下一次
+    setTimeout(tick, getNextDelay());
+  }
+
+  const delay = getNextDelay();
+  const nextTime = new Date(Date.now() + delay);
+  console.log(`[estimateAccuracy] 晚间对比定时已安排：${nextTime.toLocaleString('zh-CN')}`);
+  setTimeout(tick, delay);
+}
