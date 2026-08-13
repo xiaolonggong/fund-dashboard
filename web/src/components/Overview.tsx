@@ -1,12 +1,19 @@
-import type {HoldingsSummary} from '@/lib/api'
+import type {HoldingsSummary, PortfolioResult} from '@/lib/api'
 import {formatCurrency, formatPercent, valueTone} from '@/lib/format'
+import {PortfolioSummaryCard, type PortfolioSummaryInfo} from '@/components/PortfolioSummaryCard'
 
 export function Overview({
   summary,
   loading,
+  portfolioResults,
+  totalCurrentValue,
+  activePortfolioId,
 }: {
   summary: HoldingsSummary | null
   loading: boolean
+  portfolioResults: PortfolioResult[]
+  totalCurrentValue: number | null
+  activePortfolioId: string | null
 }) {
   const missing = (summary?.missingCount || 0) > 0
   const recovery =
@@ -57,13 +64,26 @@ export function Overview({
     },
   ]
 
+  // Build portfolio summary cards for "全部" view
+  const portfolioCards: PortfolioSummaryInfo[] = portfolioResults
+    .filter((r) => r.list.length > 0 || r.summary.totalCost > 0)
+    .map((r) => ({
+      portfolioId: r.portfolioId,
+      portfolioName: r.portfolioName,
+      summary: r.summary,
+      weight:
+        totalCurrentValue != null && totalCurrentValue > 0 && r.summary.totalCurrentValue != null
+          ? (r.summary.totalCurrentValue / totalCurrentValue) * 100
+          : null,
+    }))
+
   return (
     <section id="overview" aria-labelledby="overview-title" className="scroll-mt-20">
       <div className="mb-3 flex items-end justify-between gap-4">
         <div>
           <p className="section-kicker">Portfolio overview</p>
           <h1 id="overview-title" className="section-title">
-            组合总览
+            {activePortfolioId ? '组合总览' : '全部组合总览'}
           </h1>
         </div>
         {missing ? (
@@ -82,8 +102,21 @@ export function Overview({
           </article>
         ))}
       </div>
+
+      {/* Portfolio summary cards in "全部" view */}
+      {activePortfolioId === null && portfolioCards.length > 0 ? (
+        <div className="mt-4">
+          <div className="mb-2 text-xs font-medium text-muted">各组合概览</div>
+          <div className="metric-grid">
+            {portfolioCards.map((card) => (
+              <PortfolioSummaryCard key={card.portfolioId} info={card} loading={loading} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <p className="mt-3 text-xs leading-5 text-muted">
-        持仓市值、浮动盈亏和持仓收益率仅按已确认净值计算；当日收益按当天预估或当天确认净值计算，盘前及非交易日显示“-”。
+        持仓市值、浮动盈亏和持仓收益率仅按已确认净值计算；当日收益按当天预估或当天确认净值计算，盘前及非交易日显示"-"。
       </p>
     </section>
   )

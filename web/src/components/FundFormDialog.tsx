@@ -4,6 +4,7 @@ import {
   type AmountBasis,
   type FundQuoteRow,
   type HoldingInput,
+  type Portfolio,
   type ResolveFundResult,
 } from '@/lib/api'
 import {Button} from '@/components/ui/button'
@@ -22,16 +23,21 @@ export function FundFormDialog({
   onOpenChange,
   initial,
   onSubmit,
+  portfolios,
+  defaultPortfolioId,
 }: {
   open: boolean
   onOpenChange: (value: boolean) => void
   initial: FundQuoteRow | null
   onSubmit: (payload: HoldingInput) => Promise<void>
+  portfolios: Portfolio[]
+  defaultPortfolioId: string
 }) {
   const [code, setCode] = useState('')
   const [totalCost, setTotalCost] = useState('')
   const [amount, setAmount] = useState('')
   const [amountBasis, setAmountBasis] = useState<AmountBasis>('prev')
+  const [portfolioId, setPortfolioId] = useState(defaultPortfolioId)
   const [meta, setMeta] = useState<ResolveFundResult | null>(null)
   const [resolving, setResolving] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -49,10 +55,11 @@ export function FundFormDialog({
           : '',
     )
     setAmountBasis(initial?.percentSource === 'confirmed' ? 'today' : 'prev')
+    setPortfolioId(initial?.portfolioId || defaultPortfolioId)
     setMeta(null)
     setError('')
     if (initial?.code) void identify(initial.code)
-  }, [open, initial])
+  }, [open, initial, defaultPortfolioId])
 
   async function identify(inputCode = code) {
     const normalized = inputCode.trim()
@@ -99,6 +106,7 @@ export function FundFormDialog({
                 totalCost: Number(totalCost),
                 amount: Number(amount),
                 amountBasis,
+                portfolioId,
               })
               onOpenChange(false)
             } catch (err: unknown) {
@@ -133,6 +141,26 @@ export function FundFormDialog({
                   {meta.sectors.length ? ` · ${meta.sectors.join(' / ')}` : ''}
                 </div>
               </div>
+            ) : null}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="portfolio-select">所属组合</Label>
+            <select
+              id="portfolio-select"
+              value={portfolioId}
+              onChange={(e) => setPortfolioId(e.target.value)}
+              disabled={!!initial}
+              className="w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent disabled:opacity-60"
+            >
+              {portfolios.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            {initial ? (
+              <p className="text-xs text-muted">如需调整组合归属，请删除后重新添加。</p>
             ) : null}
           </div>
 

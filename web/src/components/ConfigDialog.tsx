@@ -15,6 +15,7 @@ type PendingImport = {
   fileName: string
   count: number
   watchCount: number
+  portfolioCount: number
   exportedAt: string
   schemaVersion: number
 }
@@ -116,6 +117,8 @@ export function ConfigDialog({
               <dd className="truncate text-ink-soft">{pending.fileName}</dd>
               <dt>持仓数量</dt>
               <dd className="text-ink-soft">{pending.count} 只</dd>
+              <dt>组合数量</dt>
+              <dd className="text-ink-soft">{pending.portfolioCount} 个</dd>
               <dt>自选数量</dt>
               <dd className="text-ink-soft">{pending.watchCount} 只</dd>
               <dt>备份时间</dt>

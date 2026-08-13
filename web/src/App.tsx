@@ -5,11 +5,17 @@ import {
   fetchIndices,
   fetchMarketOverview,
   fetchWatchlist,
-  type HoldingsPayload,
   type IndexItem,
   type MarketOverviewPayload,
+  type MultiPortfolioPayload,
+  type Portfolio,
   type WatchQuoteRow,
 } from '@/lib/api'
+import {
+  getActivePortfolioId,
+  setActivePortfolioId,
+  listPortfolios,
+} from '@/lib/portfolioStore'
 import {Button} from '@/components/ui/button'
 import {ConfigDialog} from '@/components/ConfigDialog'
 import {EstimateAccuracy} from '@/components/EstimateAccuracy'
@@ -17,6 +23,8 @@ import {IndicesDashboard} from '@/components/IndicesDashboard'
 import {MarketOverview} from '@/components/MarketOverview'
 import {Overview} from '@/components/Overview'
 import {PortfolioTable} from '@/components/PortfolioTable'
+import {PortfolioTabBar} from '@/components/PortfolioTabBar'
+import {PortfolioManagerDialog} from '@/components/PortfolioManagerDialog'
 import {Watchlist} from '@/components/Watchlist'
 import packageInfo from '../package.json'
 import './index.css'
@@ -32,7 +40,7 @@ const SECTIONS = [
 ] as const
 
 export default function App() {
-  const [holdings, setHoldings] = useState<HoldingsPayload | null>(null)
+  const [holdings, setHoldings] = useState<MultiPortfolioPayload | null>(null)
   const [indices, setIndices] = useState<IndexItem[]>([])
   const [market, setMarket] = useState<MarketOverviewPayload | null>(null)
   const [watchlist, setWatchlist] = useState<WatchQuoteRow[]>([])
@@ -44,9 +52,18 @@ export default function App() {
   const [marketError, setMarketError] = useState('')
   const [watchlistError, setWatchlistError] = useState('')
   const [configOpen, setConfigOpen] = useState(false)
+  const [portfolioManagerOpen, setPortfolioManagerOpen] = useState(false)
   const [activeSection, setActiveSection] = useState<(typeof SECTIONS)[number]['id']>(
     'overview',
   )
+  const [portfolios, setPortfolios] = useState<Portfolio[]>([])
+  const [activePortfolioId, setActivePortfolioIdState] = useState<string | null>(null)
+
+  // Initialize portfolios and active portfolio from localStorage
+  useEffect(() => {
+    setPortfolios(listPortfolios())
+    setActivePortfolioIdState(getActivePortfolioId())
+  }, [])
 
   const load = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true)
@@ -123,7 +140,26 @@ export default function App() {
     return () => window.removeEventListener('scroll', updateActiveSection)
   }, [])
 
+  function handleSelectPortfolio(id: string | null) {
+    setActivePortfolioIdState(id)
+    setActivePortfolioId(id)
+  }
+
+  function handlePortfoliosChanged() {
+    setPortfolios(listPortfolios())
+    void load(true)
+  }
+
   const allFailed = !!holdingsError && !!indicesError && !!marketError
+
+  // Determine which summary and portfolio results to show
+  const activeResult =
+    activePortfolioId !== null
+      ? holdings?.portfolios.find((r) => r.portfolioId === activePortfolioId)
+      : null
+  const displaySummary = activeResult?.summary || holdings?.aggregate?.summary || null
+  const portfolioResults = holdings?.portfolios || []
+  const totalCurrentValue = holdings?.totalCurrentValue ?? null
 
   return (
     <div className="app-shell">
@@ -184,10 +220,28 @@ export default function App() {
             <div className="error-banner" role="status">{holdingsError}</div>
           ) : null}
 
-          <Overview summary={holdings?.summary || null} loading={loading} />
+          {/* Portfolio tab bar */}
+          {portfolios.length > 0 ? (
+            <PortfolioTabBar
+              portfolios={portfolios}
+              activeId={activePortfolioId}
+              onSelect={handleSelectPortfolio}
+              onManage={() => setPortfolioManagerOpen(true)}
+            />
+          ) : null}
+
+          <Overview
+            summary={displaySummary}
+            loading={loading}
+            portfolioResults={portfolioResults}
+            totalCurrentValue={totalCurrentValue}
+            activePortfolioId={activePortfolioId}
+          />
           <PortfolioTable
             data={holdings}
             loading={loading}
+            activePortfolioId={activePortfolioId}
+            portfolios={portfolios}
             onChanged={() => void load(true)}
           />
           <Watchlist
@@ -213,7 +267,15 @@ export default function App() {
       <ConfigDialog
         open={configOpen}
         onOpenChange={setConfigOpen}
-        onImported={() => void load(true)}
+        onImported={() => {
+          setPortfolios(listPortfolios())
+          void load(true)
+        }}
+      />
+      <PortfolioManagerDialog
+        open={portfolioManagerOpen}
+        onOpenChange={setPortfolioManagerOpen}
+        onChanged={handlePortfoliosChanged}
       />
     </div>
   )

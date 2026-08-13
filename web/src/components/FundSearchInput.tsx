@@ -20,7 +20,7 @@ export function FundSearchInput({
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(-1)
   const containerRef = useRef<HTMLDivElement>(null)
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const reqIdRef = useRef(0)
   const listboxId = useId()
 

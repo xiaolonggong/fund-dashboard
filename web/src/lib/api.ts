@@ -5,7 +5,9 @@ import {
   createFund as createLocalFund,
   createWatchFund as createLocalWatchFund,
   importLocalConfig,
-  listFunds,
+  listAllFunds,
+  listFundsByPortfolio,
+  listPortfolios,
   listWatchFunds,
   loadConfig,
   patchFunds,
@@ -29,14 +31,22 @@ api.interceptors.request.use((config) => {
 })
 
 export type FundRecord = {
+  id: string
   code: string
   name: string
   fundKey?: string
   shares: number
   totalCost: number
   sectors: string[]
+  portfolioId: string
   createdAt?: string
   updatedAt?: string
+}
+
+export type Portfolio = {
+  id: string
+  name: string
+  createdAt: string
 }
 
 export type WatchFundRecord = {
@@ -94,6 +104,19 @@ export type HoldingsPayload = {
   list: FundQuoteRow[]
 }
 
+export type PortfolioResult = {
+  portfolioId: string
+  portfolioName: string
+  summary: HoldingsSummary
+  list: FundQuoteRow[]
+}
+
+export type MultiPortfolioPayload = {
+  portfolios: PortfolioResult[]
+  aggregate: HoldingsPayload
+  totalCurrentValue: number | null
+}
+
 export type IndexGroup = 'A股' | '港股' | '美股' | '日韩'
 
 export type IndexItem = {
@@ -118,8 +141,10 @@ export type AppConfig = {
   schemaVersion: number
   exportedAt?: string
   settings: AppSettings
+  portfolios: Record<string, Portfolio>
   funds: Record<string, FundRecord>
   watchlist: WatchFundRecord[]
+  activePortfolioId?: string | null
 }
 
 function assertOk<T extends {success?: boolean; message?: string}>(data: T): T {
@@ -127,21 +152,82 @@ function assertOk<T extends {success?: boolean; message?: string}>(data: T): T {
   return data
 }
 
-export async function fetchHoldings(): Promise<HoldingsPayload> {
-  const funds = listFunds()
-  if (!funds.length) {
+export async function fetchHoldings(): Promise<MultiPortfolioPayload> {
+  const allHoldings = listAllFunds()
+  const portfolios = listPortfolios()
+
+  if (!allHoldings.length) {
     const empty = calcHoldings([], [])
-    return {summary: empty.summary, list: empty.list}
+    const emptyResults = portfolios.map((p) => ({
+      portfolioId: p.id,
+      portfolioName: p.name,
+      summary: empty.summary,
+      list: [] as FundQuoteRow[],
+    }))
+    return {
+      portfolios: emptyResults,
+      aggregate: {summary: empty.summary, list: empty.list},
+      totalCurrentValue: 0,
+    }
   }
+
+  // Deduplicate by code for API call
+  const seen = new Set<string>()
+  const uniqueFunds = allHoldings.filter((f) => {
+    if (seen.has(f.code)) return false
+    seen.add(f.code)
+    return true
+  })
+
   const {data} = await api.post<{
     success: boolean
     message?: string
     data: {quotes: FundQuoteRow[]}
-  }>('/funds/quotes', {type: 'hold', funds})
+  }>('/funds/quotes', {type: 'hold', funds: uniqueFunds})
   assertOk(data)
-  const result = calcHoldings(funds, data.data.quotes || [])
-  if (result.persistPatches.length) patchFunds(result.persistPatches)
-  return {summary: result.summary, list: result.list}
+  const quotes = data.data.quotes || []
+
+  // Collect persist patches from all calculations
+  const allPatches: Array<{code: string; name?: string; fundKey?: string; sectors?: string[]}> = []
+
+  // Calculate per-portfolio
+  const portfolioResults: PortfolioResult[] = portfolios.map((p) => {
+    const holdings = listFundsByPortfolio(p.id)
+    const result = calcHoldings(holdings, quotes)
+    allPatches.push(...result.persistPatches)
+    return {
+      portfolioId: p.id,
+      portfolioName: p.name,
+      summary: result.summary,
+      list: result.list,
+    }
+  })
+
+  // Calculate aggregate
+  const aggregateResult = calcHoldings(allHoldings, quotes)
+  allPatches.push(...aggregateResult.persistPatches)
+
+  // Persist patches (deduplicated by code)
+  if (allPatches.length) {
+    const patchMap = new Map<string, typeof allPatches[0]>()
+    for (const patch of allPatches) {
+      const existing = patchMap.get(patch.code)
+      if (existing) {
+        Object.assign(existing, patch)
+      } else {
+        patchMap.set(patch.code, {...patch})
+      }
+    }
+    patchFunds([...patchMap.values()])
+  }
+
+  const totalCurrentValue = aggregateResult.summary.totalCurrentValue
+
+  return {
+    portfolios: portfolioResults,
+    aggregate: {summary: aggregateResult.summary, list: aggregateResult.list},
+    totalCurrentValue,
+  }
 }
 
 export async function fetchIndices(): Promise<IndexItem[]> {
@@ -328,6 +414,7 @@ export type HoldingInput = {
   totalCost: number
   amount: number
   amountBasis: AmountBasis
+  portfolioId: string
 }
 
 export async function createHolding(payload: HoldingInput) {
@@ -341,14 +428,17 @@ export async function createHolding(payload: HoldingInput) {
     shares,
     totalCost: payload.totalCost,
     sectors: meta.sectors || [],
+    portfolioId: payload.portfolioId,
   })
 }
 
-export async function updateHolding(code: string, payload: Omit<HoldingInput, 'code'>) {
+export async function updateHolding(id: string, payload: Omit<HoldingInput, 'code' | 'portfolioId'>) {
   if (!(payload.totalCost >= 0)) throw new Error('持仓成本不能小于 0')
-  const meta = await resolveFund(code)
+  const existing = loadConfig().funds[id]
+  if (!existing) throw new Error('持仓不存在')
+  const meta = await resolveFund(existing.code)
   const shares = deriveHoldShares(payload.amount, payload.amountBasis, meta)
-  return updateLocalFund(code, {
+  return updateLocalFund(id, {
     shares,
     totalCost: payload.totalCost,
     name: meta.name,
@@ -357,8 +447,12 @@ export async function updateHolding(code: string, payload: Omit<HoldingInput, 'c
   })
 }
 
-export function removeHolding(code: string) {
-  removeLocalFund(code)
+export function removeHolding(id: string) {
+  removeLocalFund(id)
+}
+
+export function moveHolding(id: string, portfolioId: string) {
+  updateLocalFund(id, {portfolioId})
 }
 
 export async function createWatchFund(code: string) {
