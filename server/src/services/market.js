@@ -171,21 +171,117 @@ export async function getSectorBoards({sort = 'desc', size = 10} = {}) {
   return list
 }
 
-export async function getUpDownStats() {
-  const res = await axios.get('https://emdatah5.eastmoney.com/dc/NXFXB/GetUpDownData', {
-    timeout: 12000,
-    headers: {'User-Agent': ua, Referer: 'https://emdatah5.eastmoney.com/'},
-    params: {type: 0},
-  })
-  const row = Array.isArray(res.data) ? res.data[0] : res.data?.[0]
-  if (!row) {
-    return {up: 0, down: 0, flat: 0, time: null}
-  }
+// ---- 涨跌家数：全量 A 股统计（含沪深主板/创业板/科创板/北交所）----
+// 旧接口 emdatah5 GetUpDownData 只覆盖约 5186 只，漏了约 700 只，
+// 改为从 push2delay clist 逐页拉取全部 5800+ 只并自行统计。
+// 结果缓存 2 分钟，避免每次请求都拉 59 页。
+
+const BREADTH_CACHE_TTL = 120_000 // 2 min
+let breadthCache = null // {data, expiry}
+
+const ALL_ASHARE_FS = 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048'
+const CLIST_PAGE_SIZE = 100
+const CLIST_BATCH = 20 // 并发批次大小
+
+async function fetchClistPage(page) {
+  const data = await eastmoneyGet(
+    '/api/qt/clist/get',
+    {
+      pn: page,
+      pz: CLIST_PAGE_SIZE,
+      po: 1,
+      np: 1,
+      fltt: 2,
+      invt: 2,
+      fid: 'f12',
+      fs: ALL_ASHARE_FS,
+      fields: 'f3',
+    },
+    PUSH_HOSTS,
+  )
   return {
-    up: Number(row.up) || 0,
-    down: Number(row.down) || 0,
-    flat: Number(row.t) || 0,
-    time: row.time || null,
+    total: data?.data?.total || 0,
+    diff: data?.data?.diff || [],
+  }
+}
+
+export async function getUpDownStats() {
+  // 命中缓存直接返回
+  if (breadthCache && Date.now() < breadthCache.expiry) {
+    return breadthCache.data
+  }
+
+  try {
+    // 先取第一页拿到 total
+    const first = await fetchClistPage(1)
+    const totalStocks = first.total
+    if (!totalStocks) {
+      return {up: 0, down: 0, flat: 0, time: null}
+    }
+
+    const totalPages = Math.ceil(totalStocks / CLIST_PAGE_SIZE)
+    let up = 0
+    let down = 0
+    let flat = 0
+
+    // 统计第一页
+    for (const d of first.diff) {
+      const pct = d.f3
+      if (typeof pct !== 'number' || !Number.isFinite(pct)) continue
+      if (pct > 0) up += 1
+      else if (pct < 0) down += 1
+      else flat += 1
+    }
+
+    // 并发拉取剩余页（每批 CLIST_BATCH 页）
+    const remainingPages = []
+    for (let p = 2; p <= totalPages; p += 1) {
+      remainingPages.push(p)
+    }
+
+    for (let i = 0; i < remainingPages.length; i += CLIST_BATCH) {
+      const batch = remainingPages.slice(i, i + CLIST_BATCH)
+      const results = await Promise.all(batch.map((p) => fetchClistPage(p)))
+      for (const r of results) {
+        for (const d of r.diff) {
+          const pct = d.f3
+          if (typeof pct !== 'number' || !Number.isFinite(pct)) continue
+          if (pct > 0) up += 1
+          else if (pct < 0) down += 1
+          else flat += 1
+        }
+      }
+    }
+
+    const now = new Date()
+    const result = {
+      up,
+      down,
+      flat,
+      time: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`,
+    }
+
+    breadthCache = {data: result, expiry: Date.now() + BREADTH_CACHE_TTL}
+    return result
+  } catch (e) {
+    // 降级：如果全量拉取失败，尝试旧接口
+    try {
+      const res = await axios.get('https://emdatah5.eastmoney.com/dc/NXFXB/GetUpDownData', {
+        timeout: 12000,
+        headers: {'User-Agent': ua, Referer: 'https://emdatah5.eastmoney.com/'},
+        params: {type: 0},
+      })
+      const row = Array.isArray(res.data) ? res.data[0] : res.data?.[0]
+      if (!row) return {up: 0, down: 0, flat: 0, time: null}
+      return {
+        up: Number(row.up) || 0,
+        down: Number(row.down) || 0,
+        flat: Number(row.t) || 0,
+        time: row.time || null,
+      }
+    } catch {
+      return {up: 0, down: 0, flat: 0, time: null}
+    }
   }
 }
 
