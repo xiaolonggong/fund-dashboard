@@ -48,6 +48,29 @@ function errorTone(error: number | null) {
   return error <= 0.3 ? 'text-fall' : error <= 1 ? 'text-ink' : 'text-rise'
 }
 
+/**
+ * 统计基金近10个交易日中超限（accurate===false）的次数
+ * 只统计有 error 值的记录（对比已完成），取最近10条
+ */
+function getExceedInfo(
+  code: string,
+  data: AccuracyPayload['records'],
+): {count: number; total: number} {
+  const fund = data[code]
+  if (!fund) return {count: 0, total: 0}
+  const completed = fund.records.filter((r) => r.error != null)
+  const recent = completed.slice(-10)
+  const count = recent.filter((r) => r.accurate === false).length
+  return {count, total: recent.length}
+}
+
+/** 超限次数配色：0-1次绿色，2-3次默认色，4次及以上红色 */
+function exceedTone(count: number) {
+  if (count <= 1) return 'text-fall'
+  if (count <= 3) return 'text-ink'
+  return 'text-rise'
+}
+
 /** 涨跌幅配色：涨=红(text-rise) 跌=绿(text-fall) 平=灰(text-muted) */
 function growthTone(v: number | null) {
   if (v == null || !Number.isFinite(v)) return 'text-muted'
@@ -148,6 +171,14 @@ export function EstimateAccuracy({loading}: {loading: boolean}) {
   const summary = data?.summary
   const rows = data ? flattenRecords(data.records) : []
 
+  // 预计算每只基金近10个交易日的超限次数
+  const exceedMap: Record<string, {count: number; total: number}> = {}
+  if (data) {
+    for (const code of Object.keys(data.records)) {
+      exceedMap[code] = getExceedInfo(code, data.records)
+    }
+  }
+
   return (
     <div id="accuracy">
       <Panel>
@@ -221,6 +252,7 @@ export function EstimateAccuracy({loading}: {loading: boolean}) {
                   <th className="px-3 py-2 text-right font-medium">实际涨跌幅</th>
                   <th className="px-3 py-2 text-right font-medium">误差</th>
                   <th className="px-3 py-2 text-center font-medium sm:pr-5">判定</th>
+                  <th className="px-3 py-2 text-right font-medium">超限次数</th>
                 </tr>
               </thead>
               <tbody>
@@ -261,6 +293,14 @@ export function EstimateAccuracy({loading}: {loading: boolean}) {
                       <td className="whitespace-nowrap px-3 py-2 text-center text-xs sm:pr-5">
                         <span className={status.tone}>{status.label}</span>
                       </td>
+                      {(() => {
+                        const exceed = exceedMap[row.code] || {count: 0, total: 0}
+                        return (
+                          <td className={`whitespace-nowrap px-3 py-2 text-right font-mono text-xs ${exceedTone(exceed.count)}`}>
+                            {exceed.total > 0 ? `${exceed.count}/${exceed.total}` : '--'}
+                          </td>
+                        )
+                      })()}
                     </tr>
                   )
                 })}
