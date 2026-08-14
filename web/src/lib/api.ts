@@ -501,6 +501,7 @@ export type AccuracySummary = {
   accurateCount: number
   accuracyRate: number
   avgError: number
+  date: string | null
 }
 
 export type AccuracyPayload = {

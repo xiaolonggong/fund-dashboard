@@ -62,20 +62,26 @@ function formatGrowth(v: number | null) {
   return `${prefix}${v.toFixed(2)}%`
 }
 
-/** 从所有基金记录中提取最近 N 天的记录 */
+/**
+ * 从所有基金记录中提取对比已完成的记录（error != null）
+ * 只展示有完整对比结果的记录，当天的未完成估值不会出现。
+ * 按日期倒序排列，取最近 50 条。
+ */
 function flattenRecords(
   data: AccuracyPayload['records'],
-  limit = 10,
+  limit = 50,
 ): Array<{code: string; name: string; ftype: string} & AccuracyRecord> {
   const rows: Array<{code: string; name: string; ftype: string} & AccuracyRecord> = []
   for (const [code, fund] of Object.entries(data)) {
-    const recent = fund.records.slice(-limit)
-    for (const record of recent) {
-      rows.push({code, name: fund.name, ftype: fund.ftype, ...record})
+    for (const record of fund.records) {
+      // 只保留对比已完成的记录（有 error 值）
+      if (record.error != null) {
+        rows.push({code, name: fund.name, ftype: fund.ftype, ...record})
+      }
     }
   }
   rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-  return rows.slice(0, 30)
+  return rows.slice(0, limit)
 }
 
 export function EstimateAccuracy({loading}: {loading: boolean}) {
@@ -152,6 +158,11 @@ export function EstimateAccuracy({loading}: {loading: boolean}) {
             <div className="flex items-center gap-4 text-sm">
               {summary ? (
                 <>
+                  {summary.date && (
+                    <span className="rounded bg-paper-deep px-2 py-0.5 text-xs text-muted">
+                      {summary.date}
+                    </span>
+                  )}
                   <span className="text-muted">
                     准确率{' '}
                     <span
@@ -192,8 +203,9 @@ export function EstimateAccuracy({loading}: {loading: boolean}) {
         ) : rows.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm text-muted">
             <Target className="mx-auto mb-2 h-8 w-8 opacity-30" />
-            暂无估值准确率数据。盘中打开看板时会自动采集估值，
-            每交易日 22:00 自动拉取净值并对比。也可点击「立即对比」手动触发。
+            暂无已完成的对比数据。盘中打开看板时会自动采集估值，
+            每交易日 22:00 自动拉取净值并对比，对比完成后结果才会显示。
+            也可点击「立即对比」手动触发。
           </div>
         ) : (
           <div className="overflow-x-auto">

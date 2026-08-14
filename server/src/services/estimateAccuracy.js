@@ -251,9 +251,27 @@ export function getAccuracyData(codes = []) {
 
 /**
  * 获取准确率汇总统计
+ * 只统计最近一个已完成对比（error != null）的交易日，
+ * 避免多天数据混在一起。当天的未完成记录不计入。
  */
 export function getAccuracySummary(codes = []) {
   const data = getAccuracyData(codes)
+
+  // 找出所有有 error 的记录中最新的日期
+  let latestDate = ''
+  for (const fund of Object.values(data)) {
+    for (const record of fund.records) {
+      if (record.error != null && record.date > latestDate) {
+        latestDate = record.date
+      }
+    }
+  }
+
+  if (!latestDate) {
+    return {totalRecords: 0, accurateCount: 0, accuracyRate: 0, avgError: 0, date: null}
+  }
+
+  // 只统计该日期的记录
   let totalRecords = 0
   let accurateCount = 0
   let totalError = 0
@@ -261,7 +279,7 @@ export function getAccuracySummary(codes = []) {
 
   for (const fund of Object.values(data)) {
     for (const record of fund.records) {
-      if (record.error != null) {
+      if (record.error != null && record.date === latestDate) {
         totalRecords++
         totalError += record.error
         errorCount++
@@ -275,6 +293,7 @@ export function getAccuracySummary(codes = []) {
     accurateCount,
     accuracyRate: totalRecords > 0 ? (accurateCount / totalRecords) * 100 : 0,
     avgError: errorCount > 0 ? totalError / errorCount : 0,
+    date: latestDate,
   }
 }
 
