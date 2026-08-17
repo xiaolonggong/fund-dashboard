@@ -1,5 +1,6 @@
 import axios from 'axios'
 import https from 'https'
+import {getIndexFullHistory} from './market.js'
 
 const ua =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
@@ -193,8 +194,12 @@ async function eastmoneyQuoteGet(path, params = {}) {
 /** NEWTEXCH: 0 深 / 1 沪；缺省时按代码前缀兜底 */
 function toAshareSecid(gpdm, newtexch) {
   const code = String(gpdm || '').trim()
-  if (!/^\d{6}$/.test(code)) return ''
+  if (!code) return ''
   const ex = String(newtexch ?? '')
+  // 港股：NEWTEXCH=116，代码5位，secid 前缀 116
+  if (ex === '116') return `116.${code}`
+  // A股：6位代码
+  if (!/^\d{6}$/.test(code)) return ''
   if (ex === '1') return `1.${code}`
   if (ex === '0') return `0.${code}`
   if (/^[56]/.test(code)) return `1.${code}`
@@ -1025,4 +1030,528 @@ export async function getFundsQuotes(funds) {
     })
   }
   return results
+}
+
+/* ===================== 基金详情 ===================== */
+
+/** 基金详情信息（含管理费、托管费、经理、投资策略等） */
+async function fetchFundDetailInfo(code) {
+  try {
+    return await eastmoneyFundGet('FundMNDetailInformation', {
+      FCODE: String(code).padStart(6, '0'),
+    })
+  } catch {
+    return null
+  }
+}
+
+/** 批量获取持仓股实时行情 */
+async function fetchHoldingStockQuotes(stocks) {
+  if (!stocks.length) return []
+  const secids = []
+  const stockMap = new Map()
+  for (const s of stocks) {
+    const secid = toAshareSecid(s.GPDM, s.NEWTEXCH)
+    if (secid) {
+      secids.push(secid)
+      stockMap.set(String(s.GPDM).trim(), s)
+    }
+  }
+  if (!secids.length) return []
+
+  // 分批拉取，每批最多 50 只
+  const BATCH = 50
+  const results = []
+  for (let i = 0; i < secids.length; i += BATCH) {
+    const batch = secids.slice(i, i + BATCH)
+    try {
+      const data = await eastmoneyQuoteGet('/api/qt/ulist.np/get', {
+        fltt: 2,
+        invt: 2,
+        fields: 'f2,f3,f4,f12,f14,f15,f16,f17,f18',
+        secids: batch.join(','),
+      })
+      const diff = data?.data?.diff || []
+      for (const d of diff) {
+        const code = String(d.f12 || '').trim()
+        const stock = stockMap.get(code)
+        if (!stock) continue
+        results.push({
+          code,
+          name: d.f14 || stock.GPJC || stock.GPNAME || '',
+          price: typeof d.f2 === 'number' ? d.f2 : null,
+          percent: typeof d.f3 === 'number' ? d.f3 : null,
+          change: typeof d.f4 === 'number' ? d.f4 : null,
+          open: typeof d.f17 === 'number' ? d.f17 : null,
+          high: typeof d.f15 === 'number' ? d.f15 : null,
+          low: typeof d.f16 === 'number' ? d.f16 : null,
+          prevClose: typeof d.f18 === 'number' ? d.f18 : null,
+          holdingWeight: parseFloat(stock.JZBL) || null,
+        })
+      }
+    } catch {
+      // 单批失败忽略
+    }
+  }
+  return results
+}
+
+/** 格式化数字（亿） */
+function formatScaleYi(val) {
+  const n = parseFloat(val)
+  if (!Number.isFinite(n)) return null
+  if (n >= 1e8) return {value: n / 1e8, unit: '亿'}
+  if (n >= 1e4) return {value: n / 1e4, unit: '万'}
+  return {value: n, unit: ''}
+}
+
+/** 解析基金费率页面 HTML，提取赎回费率分档表和交易确认日 */
+async function fetchFundFeeRules(code) {
+  try {
+    const padded = String(code).padStart(6, '0')
+    const res = await axios.get(`https://fundf10.eastmoney.com/jjfl_${padded}.html`, {
+      timeout: 10000,
+      headers: {
+        'User-Agent': ua,
+        Referer: 'https://fund.eastmoney.com/',
+      },
+      httpsAgent: agent,
+    })
+    const html = typeof res.data === 'string' ? res.data : ''
+
+    // 解析所有 w650 费率表
+    const tables = []
+    const tableRe = /<table class="w650 comm jjfl">([\s\S]*?)<\/table>/g
+    let tm
+    while ((tm = tableRe.exec(html)) !== null) {
+      const inner = tm[1]
+      // 提取表头
+      const thRe = /<th[^>]*>([\s\S]*?)<\/th>/g
+      const headers = []
+      let hm
+      while ((hm = thRe.exec(inner)) !== null) {
+        headers.push(hm[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim())
+      }
+      // 提取行
+      const rows = []
+      const trRe = /<tr[^>]*>([\s\S]*?)<\/tr>/g
+      let rm
+      while ((rm = trRe.exec(inner)) !== null) {
+        const tdRe = /<td[^>]*>([\s\S]*?)<\/td>/g
+        const cells = []
+        let cm
+        while ((cm = tdRe.exec(rm[1])) !== null) {
+          // 去掉 HTML 标签和 &nbsp;
+          cells.push(cm[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim())
+        }
+        if (cells.length) rows.push(cells)
+      }
+      tables.push({headers, rows})
+    }
+
+    // 识别赎回费率表（表头含"适用期限"）
+    let redemptionRates = []
+    for (const t of tables) {
+      if (t.headers.some((h) => h.includes('适用期限'))) {
+        redemptionRates = t.rows.map((r) => ({
+          holdingPeriod: r[0] || '',
+          rate: r[1] || '',
+        }))
+        break
+      }
+    }
+
+    // 识别申购费率表（表头含"原费率"）
+    let purchaseRates = []
+    for (const t of tables) {
+      if (t.headers.some((h) => h.includes('原费率'))) {
+        purchaseRates = t.rows.map((r) => ({
+          amountRange: r[0] || '',
+          rate: r[1] || '',
+        }))
+        break
+      }
+    }
+
+    // 识别认购费率表（表头含"适用金额"但不含"原费率"）
+    let subscriptionRates = []
+    for (const t of tables) {
+      if (t.headers.some((h) => h.includes('适用金额')) && !t.headers.some((h) => h.includes('原费率'))) {
+        subscriptionRates = t.rows.map((r) => ({
+          amountRange: r[0] || '',
+          rate: r[1] || '',
+        }))
+        break
+      }
+    }
+
+    // 解析交易确认日
+    let buyConfirmDay = ''
+    let sellConfirmDay = ''
+    const buyMatch = html.match(/买入确认日<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/)
+    if (buyMatch) buyConfirmDay = buyMatch[1].replace(/<[^>]*>/g, '').trim()
+    const sellMatch = html.match(/卖出确认日<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/)
+    if (sellMatch) sellConfirmDay = sellMatch[1].replace(/<[^>]*>/g, '').trim()
+
+    // 最小赎回份额
+    let minRedemption = ''
+    const minRedMatch = html.match(/最小赎回份额<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/)
+    if (minRedMatch) minRedemption = minRedMatch[1].replace(/<[^>]*>/g, '').trim()
+
+    return {
+      redemptionRates,
+      purchaseRates,
+      subscriptionRates,
+      buyConfirmDay,
+      sellConfirmDay,
+      minRedemption,
+    }
+  } catch {
+    return {
+      redemptionRates: [],
+      purchaseRates: [],
+      subscriptionRates: [],
+      buyConfirmDay: '',
+      sellConfirmDay: '',
+      minRedemption: '',
+    }
+  }
+}
+
+/**
+ * 基金详情聚合：基本信息 + 基金经理 + 费率 + 前十大持仓 + 持仓股行情
+ */
+export async function getFundDetail(code) {
+  const padded = String(code).padStart(6, '0')
+
+  // 并行拉取基础数据
+  const [basicResult, detailResult, holdingsResult, feeRulesResult] = await Promise.allSettled([
+    fetchFundBasicInfo(padded),
+    fetchFundDetailInfo(padded),
+    fetchFundHoldings(padded),
+    fetchFundFeeRules(padded),
+  ])
+
+  const basic = basicResult.status === 'fulfilled' ? basicResult.value : null
+  const detail = detailResult.status === 'fulfilled' ? detailResult.value : null
+  const {stocks: holdingStocks, etfName} = holdingsResult.status === 'fulfilled'
+    ? holdingsResult.value
+    : {stocks: [], etfName: ''}
+  const feeRules = feeRulesResult.status === 'fulfilled'
+    ? feeRulesResult.value
+    : {redemptionRates: [], purchaseRates: [], subscriptionRates: [], buyConfirmDay: '', sellConfirmDay: '', minRedemption: ''}
+
+  // 持仓股实时行情
+  const topStocks = holdingStocks.slice(0, 10)
+  let stockQuotes = []
+  try {
+    stockQuotes = await fetchHoldingStockQuotes(topStocks)
+  } catch {
+    stockQuotes = []
+  }
+
+  // 组装持仓股数据（合并行情信息）
+  const holdings = topStocks.map((s) => {
+    const code = String(s.GPDM || '').trim()
+    const quote = stockQuotes.find((q) => q.code === code)
+    return {
+      code,
+      name: s.GPNAME || s.GPJC || quote?.name || '',
+      shortName: s.GPJC || '',
+      holdingWeight: parseFloat(s.JZBL) || null,
+      price: quote?.price ?? null,
+      percent: quote?.percent ?? null,
+      change: quote?.change ?? null,
+      open: quote?.open ?? null,
+      high: quote?.high ?? null,
+      low: quote?.low ?? null,
+      prevClose: quote?.prevClose ?? null,
+    }
+  })
+
+  // 提取基本信息（detail 更完整，basic 补充申购赎回费率）
+  const fundScaleRaw = detail?.ENDNAV || basic?.ENDNAV || ''
+  const fundScale = formatScaleYi(fundScaleRaw)
+  const riskLevelNum = detail?.RISKLEVEL || basic?.RISKLEVEL || ''
+  const riskLevelMap = {1: '低风险', 2: '中低风险', 3: '中风险', 4: '中高风险', 5: '高风险'}
+  const riskLevel = riskLevelMap[riskLevelNum] || riskLevelNum || ''
+
+  // 基金经理
+  const managerName = detail?.JJJL || basic?.JJJL || ''
+  const fundCompany = detail?.JJGS || basic?.JJGS || ''
+  const custodianBank = detail?.TGYH || ''
+  const managers = managerName
+    ? managerName.split(/[,，、]/).map((name) => ({
+        name: name.trim(),
+        workYear: '',
+        returnRate: '',
+        power: '',
+        picUrl: '',
+      })).filter((m) => m.name)
+    : []
+
+  // 费率
+  const manageFee = detail?.MGREXP || ''
+  const custodyFee = detail?.TRUSTEXP || ''
+  const serviceFee = detail?.SALESEXP || ''
+  const purchaseRate = basic?.RATE || ''
+  const originalPurchaseRate = basic?.SOURCERATE || ''
+  const purchaseStatus = basic?.SGZT || ''
+  const redemptionStatus = basic?.SHZT || ''
+  const minPurchase = basic?.MINSG || ''
+  const maxPurchase = basic?.MAXSG || ''
+
+  return {
+    code: padded,
+    name: detail?.SHORTNAME || basic?.SHORTNAME || detail?.FULLNAME || padded,
+    fullName: detail?.FULLNAME || basic?.FULLNAME || '',
+    ftype: (detail?.FTYPE || basic?.FTYPE) && (detail?.FTYPE || basic?.FTYPE) !== '--'
+      ? String(detail?.FTYPE || basic?.FTYPE).trim()
+      : '',
+    establishDate: detail?.ESTABDATE || basic?.ESTABDATE || basic?.ESTABLISHDATE || '',
+    fundScale,
+    riskLevel,
+    fundCompany,
+    custodianBank,
+    indexName: (detail?.INDEXNAME && detail.INDEXNAME !== '--') ? detail.INDEXNAME : '',
+    benchmark: detail?.BENCH || '',
+    investTarget: detail?.INVTGT || '',
+    investStrategy: detail?.INVSTRA || '',
+    managers,
+    fees: {
+      manageFee,
+      custodyFee,
+      serviceFee,
+      purchaseRate,
+      originalPurchaseRate,
+      purchaseStatus,
+      redemptionStatus,
+      minPurchase,
+      maxPurchase,
+      redemptionRates: feeRules.redemptionRates,
+      purchaseRates: feeRules.purchaseRates,
+      buyConfirmDay: feeRules.buyConfirmDay,
+      sellConfirmDay: feeRules.sellConfirmDay,
+      minRedemption: feeRules.minRedemption,
+    },
+    holdings,
+    etfName,
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+/* ===================== 基金业绩走势 ===================== */
+
+const PERFORMANCE_RANGES = [
+  {key: '1m', label: '近1月', days: 35},
+  {key: '3m', label: '近3月', days: 100},
+  {key: '6m', label: '近6月', days: 200},
+  {key: '1y', label: '近1年', days: 400},
+  {key: '3y', label: '近3年', days: 1200},
+  {key: 'ytd', label: '今年来', days: 0},
+  {key: 'all', label: '成立来', days: 0},
+]
+
+/**
+ * 业绩比较基准解析规则。
+ * 顺序即优先级：同一段基准文本内先命中的规则优先（更具体的指数名放在前面）。
+ * 权重：组合型基准（如"沪深300*60%+恒生*20%+..."）取权重占比最高的成分指数。
+ */
+const BENCH_INDEX_RULES = [
+  {re: /中证A500/, code: '000510', name: '中证A500'},
+  {re: /中证白酒|白酒指数/, code: '399997', name: '中证白酒'},
+  {re: /中证800/, code: '000906', name: '中证800'},
+  {re: /中证2000/, code: '932000', name: '中证2000'},
+  {re: /中证1000/, code: '000852', name: '中证1000'},
+  {re: /中证500/, code: '000905', name: '中证500'},
+  // 中证全指半导体产品与设备指数(H30184)无公开历史源，用国证半导体芯片近似
+  {re: /中证全指半导体产品与设备/, code: '980017', name: '国证半导体芯片'},
+  {re: /中证全指半导体/, code: '980017', name: '国证半导体芯片'},
+  {re: /中证半导体/, code: '980017', name: '国证半导体芯片'},
+  {re: /国证半导体芯片|国证芯片/, code: '980017', name: '国证半导体芯片'},
+  {re: /中证人工智能/, code: '930713', name: '中证人工智能主题'},
+  {re: /中证医疗/, code: '399989', name: '中证医疗'},
+  {re: /中证新能源汽车|中证新能车/, code: '399976', name: '中证新能源汽车'},
+  {re: /中证新能源/, code: '399808', name: '中证新能源'},
+  {re: /沪港深高股息/, code: '930917', name: '中证沪港深高股息'},
+  {re: /中证红利/, code: '000922', name: '中证红利'},
+  {re: /中证银行/, code: '399986', name: '中证银行'},
+  {re: /中证军工/, code: '399967', name: '中证军工'},
+  {re: /中证医药/, code: '399933', name: '中证医药'},
+  {re: /中证主要消费/, code: '000932', name: '中证主要消费'},
+  {re: /中证消费/, code: '399932', name: '中证消费'},
+  {re: /中证内地消费/, code: '000942', name: '中证内地消费主题'},
+  {re: /中证内地低碳/, code: '000977', name: '中证内地低碳经济'},
+  {re: /中证全指/, code: '000985', name: '中证全指'},
+  {re: /创业板/, code: '399006', name: '创业板指'},
+  {re: /上证50/, code: '000016', name: '上证50'},
+  {re: /上证综合指数|上证综指|上证指数/, code: '000001', name: '上证指数'},
+  {re: /深证成指|深证/, code: '399001', name: '深证成指'},
+  {re: /科创50|科创板/, code: '000688', name: '科创50'},
+  {re: /北证50|北交所/, code: '899050', name: '北证50'},
+  // 恒生港股通中国科技指数无公开历史源，用恒生科技指数近似（成分高度重叠）
+  {re: /恒生港股通中国科技/, code: 'HSTECH', name: '恒生科技指数'},
+  {re: /恒生科技/, code: 'HSTECH', name: '恒生科技指数'},
+  {re: /恒生/, code: 'HSI', name: '恒生指数'},
+  {re: /纳斯达克|纳指/, code: 'NDX', name: '纳斯达克100'},
+  {re: /标普|普尔/, code: 'SPX', name: '标普500'},
+  // 黄金类基金基准（Au99.99/上海金等）无公开指数历史源，用华安黄金ETF近似
+  {re: /黄金|Au99|AU9999/, code: '518880', name: '华安黄金ETF'},
+  {re: /沪深300|沪深三零零/, code: '000300', name: '沪深300'},
+]
+
+/**
+ * 解析业绩比较基准文本，返回按权重降序的候选指数列表。
+ * 组合型基准（"A*60%+B*20%+C*20%"）按权重占比排序；无权重信息时按文本出现顺序。
+ * @returns {Array<{code:string, name:string, weight:number|null, pos:number}>}
+ */
+function resolveBenchmarkCandidates(text = '') {
+  if (!text) return []
+  const segments = String(text).split(/[＋+]/)
+  const candidates = []
+  let pos = 0
+  for (const seg of segments) {
+    const start = pos
+    pos += seg.length + 1
+    for (let i = 0; i < BENCH_INDEX_RULES.length; i++) {
+      const rule = BENCH_INDEX_RULES[i]
+      if (rule.re.test(seg)) {
+        const wm = seg.match(/[×*]?\s*(\d+(?:\.\d+)?)\s*%/)
+        candidates.push({
+          code: rule.code,
+          name: rule.name,
+          weight: wm ? parseFloat(wm[1]) : null,
+          pos: start,
+          order: i,
+        })
+        break // 同一段内取更具体（规则靠前）的一个
+      }
+    }
+  }
+  if (!candidates.length) return []
+  const hasWeight = candidates.some((c) => c.weight != null)
+  candidates.sort((a, b) => {
+    if (hasWeight) {
+      const wDiff = (b.weight ?? -1) - (a.weight ?? -1)
+      if (wDiff) return wDiff
+    }
+    if (a.pos !== b.pos) return a.pos - b.pos
+    return a.order - b.order
+  })
+  return candidates
+}
+
+/** 拉取天天基金 pingzhongdata 的单位净值全序列 */
+async function fetchPingzhongNav(code) {
+  const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js`
+  const {data} = await axios.get(url, {
+    timeout: 15000,
+    headers: {'User-Agent': ua, Referer: 'https://fund.eastmoney.com/'},
+  })
+  const text = typeof data === 'string' ? data : String(data)
+  const m = text.match(/var Data_netWorthTrend\s*=\s*(\[[\s\S]*?\]);/)
+  if (!m) throw new Error('净值序列解析失败')
+  const arr = JSON.parse(m[1])
+  return arr
+    .map((p) => ({t: Number(p.x), nav: Number(p.y)}))
+    .filter((p) => p.t && Number.isFinite(p.nav))
+}
+
+const perfCache = new Map()
+
+/**
+ * 基金业绩走势：基金累计收益 vs 业绩比较基准（解析对应指数），覆盖 7 个周期
+ */
+export async function getFundPerformance(code) {
+  const padded = String(code).padStart(6, '0')
+  const cached = perfCache.get(padded)
+  if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.data
+
+  const [navResult, detailResult] = await Promise.allSettled([
+    fetchPingzhongNav(padded),
+    fetchFundDetailInfo(padded),
+  ])
+  const navSeries = navResult.status === 'fulfilled' ? navResult.value : []
+  const detail = detailResult.status === 'fulfilled' ? detailResult.value : null
+  const benchmarkText = detail?.BENCH || ''
+  const fundName = detail?.SHORTNAME || ''
+
+  // 按权重解析基准候选，逐个尝试拉取历史；全部失败降级沪深300
+  const benchCandidates = resolveBenchmarkCandidates(benchmarkText)
+  let benchSeries = []
+  let benchCode = ''
+  let benchName = ''
+  let benchIsDefault = false
+  for (const cand of benchCandidates) {
+    try {
+      const idx = await getIndexFullHistory(cand.code)
+      const points = idx.points
+        .map((p) => ({t: Date.parse(p.date), close: p.close}))
+        .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.close))
+      if (points.length) {
+        benchSeries = points
+        benchCode = cand.code
+        benchName = idx.name
+        break
+      }
+    } catch {
+      // 尝试下一个候选
+    }
+  }
+  if (!benchSeries.length) {
+    try {
+      const idx = await getIndexFullHistory('000300')
+      benchSeries = idx.points
+        .map((p) => ({t: Date.parse(p.date), close: p.close}))
+        .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.close))
+      benchCode = '000300'
+      benchName = idx.name
+      benchIsDefault = true
+    } catch {
+      benchSeries = []
+    }
+  }
+
+  const now = Date.now()
+  const fundFirstT = navSeries.length ? navSeries[0].t : now
+  const ytdStart = new Date(new Date().getFullYear(), 0, 1).getTime()
+
+  const ranges = {}
+  for (const r of PERFORMANCE_RANGES) {
+    let startT
+    if (r.key === 'all') startT = fundFirstT
+    else if (r.key === 'ytd') startT = ytdStart
+    else startT = now - r.days * 86400000
+
+    const fundSlice = navSeries.filter((p) => p.t >= startT)
+    const benchSlice = benchSeries.filter((p) => p.t >= startT)
+    const fundPercent =
+      fundSlice.length > 1
+        ? Math.round((fundSlice[fundSlice.length - 1].nav / fundSlice[0].nav - 1) * 100 * 100) / 100
+        : null
+    const benchPercent =
+      benchSlice.length > 1
+        ? Math.round((benchSlice[benchSlice.length - 1].close / benchSlice[0].close - 1) * 100 * 100) / 100
+        : null
+    ranges[r.key] = {
+      label: r.label,
+      startDate: fundSlice.length ? fmtDate(new Date(fundSlice[0].t)) : '',
+      fundPercent,
+      benchmarkPercent: benchPercent,
+    }
+  }
+
+  const data = {
+    code: padded,
+    name: fundName,
+    benchmarkCode: benchCode,
+    benchmarkName: benchName,
+    benchmarkIsDefault: benchIsDefault,
+    benchmarkText,
+    fundSeries: navSeries,
+    benchmarkSeries: benchSeries,
+    ranges,
+  }
+  perfCache.set(padded, {at: Date.now(), data})
+  return data
 }

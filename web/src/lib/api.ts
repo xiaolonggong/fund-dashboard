@@ -528,3 +528,112 @@ export async function triggerEstimateComparison(): Promise<{processed: number; f
   }>('/funds/estimate-accuracy/run')
   return assertOk(data).data
 }
+
+/* ---------- 基金详情 ---------- */
+
+export type FundManager = {
+  name: string
+  workYear: string
+  returnRate: string
+  power: string
+  picUrl: string
+}
+
+export type RedemptionRateTier = {
+  holdingPeriod: string
+  rate: string
+}
+
+export type PurchaseRateTier = {
+  amountRange: string
+  rate: string
+}
+
+export type FeeRates = {
+  manageFee: string
+  custodyFee: string
+  serviceFee: string
+  purchaseRate: string
+  originalPurchaseRate: string
+  purchaseStatus: string
+  redemptionStatus: string
+  minPurchase: string
+  maxPurchase: string
+  redemptionRates: RedemptionRateTier[]
+  purchaseRates: PurchaseRateTier[]
+  buyConfirmDay: string
+  sellConfirmDay: string
+  minRedemption: string
+}
+
+export type HoldingStock = {
+  code: string
+  name: string
+  shortName: string
+  holdingWeight: number | null
+  price: number | null
+  percent: number | null
+  change: number | null
+  open: number | null
+  high: number | null
+  low: number | null
+  prevClose: number | null
+}
+
+export type FundDetail = {
+  code: string
+  name: string
+  fullName: string
+  ftype: string
+  establishDate: string
+  fundScale: {value: number; unit: string} | null
+  riskLevel: string
+  fundCompany: string
+  custodianBank: string
+  indexName: string
+  benchmark: string
+  investTarget: string
+  investStrategy: string
+  managers: FundManager[]
+  fees: FeeRates
+  holdings: HoldingStock[]
+  etfName: string
+  updatedAt: string
+}
+
+export type PerfRangeInfo = {
+  label: string
+  startDate: string
+  fundPercent: number | null
+  benchmarkPercent: number | null
+}
+
+export type FundPerformance = {
+  code: string
+  name: string
+  benchmarkCode: string
+  benchmarkName: string
+  benchmarkIsDefault: boolean
+  benchmarkText: string
+  fundSeries: {t: number; nav: number}[]
+  benchmarkSeries: {t: number; close: number}[]
+  ranges: Record<string, PerfRangeInfo>
+}
+
+export async function fetchFundDetail(code: string): Promise<FundDetail> {
+  const {data} = await api.get<{
+    success: boolean
+    message?: string
+    data: FundDetail
+  }>(`/funds/${encodeURIComponent(code)}/detail`)
+  return assertOk(data).data
+}
+
+export async function fetchFundPerformance(code: string): Promise<FundPerformance> {
+  const {data} = await api.get<{
+    success: boolean
+    message?: string
+    data: FundPerformance
+  }>(`/funds/${encodeURIComponent(code)}/performance`)
+  return assertOk(data).data
+}

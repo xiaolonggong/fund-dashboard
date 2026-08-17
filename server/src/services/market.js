@@ -13,6 +13,9 @@ const INDEX_LIST = [
   {group: 'A股', secid: '1.000300', code: '000300', name: '沪深300', tx: 'sh000300'},
   {group: 'A股', secid: '1.000905', code: '000905', name: '中证500', tx: 'sh000905'},
   {group: 'A股', secid: '1.000852', code: '000852', name: '中证1000', tx: 'sh000852'},
+  {group: 'A股', secid: '1.000906', code: '000906', name: '中证800', tx: 'sh000906'},
+  {group: 'A股', secid: '1.932000', code: '932000', name: '中证2000', tx: 'sh932000'},
+  {group: 'A股', secid: '0.399997', code: '399997', name: '中证白酒', tx: 'sz399997'},
   {group: '港股', secid: '100.HSI', code: 'HSI', name: '恒生指数', tx: 'hkHSI'},
   {group: '港股', secid: '124.HSTECH', code: 'HSTECH', name: '恒生科技指数', tx: 'hkHSTECH'},
   {group: '美股', secid: '100.NDX', code: 'NDX', name: '纳斯达克100', tx: 'us.NDX', sinaUs: '.NDX'},
@@ -30,6 +33,150 @@ const INDEX_LIST = [
     code: 'KS11',
     name: '首尔综合指数',
     naver: 'KOSPI',
+  },
+  // ---- 业绩基准专用指数（benchOnly 不展示在首页指数列表，仅用于基金业绩基准对比）----
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '1.000510',
+    code: '000510',
+    name: '中证A500',
+    tx: 'sh000510',
+  },
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '1.000985',
+    code: '000985',
+    name: '中证全指',
+    tx: 'sh000985',
+  },
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '0.399989',
+    code: '399989',
+    name: '中证医疗',
+    tx: 'sz399989',
+  },
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '0.399808',
+    code: '399808',
+    name: '中证新能源',
+    tx: 'sz399808',
+  },
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '0.399976',
+    code: '399976',
+    name: '中证新能源汽车',
+    tx: 'sz399976',
+  },
+  // 中证全指半导体产品与设备指数（H30184）无公开历史数据源，
+  // 用国证半导体芯片（980017，新浪有 2019 年至今全历史）近似
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '0.980017',
+    code: '980017',
+    name: '国证半导体芯片',
+    tx: 'sz980017',
+  },
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '0.399986',
+    code: '399986',
+    name: '中证银行',
+    tx: 'sz399986',
+  },
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '0.399967',
+    code: '399967',
+    name: '中证军工',
+    tx: 'sz399967',
+  },
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '0.399933',
+    code: '399933',
+    name: '中证医药',
+    tx: 'sz399933',
+  },
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '0.399932',
+    code: '399932',
+    name: '中证消费',
+    tx: 'sz399932',
+  },
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '1.000932',
+    code: '000932',
+    name: '中证主要消费',
+    tx: 'sh000932',
+  },
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '1.000942',
+    code: '000942',
+    name: '中证内地消费主题',
+    tx: 'sh000942',
+  },
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '1.000977',
+    code: '000977',
+    name: '中证内地低碳经济',
+    tx: 'sh000977',
+  },
+  // 中证红利：新浪数据停在 2019 年（过期），改用中证官网全历史优先
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '1.000922',
+    code: '000922',
+    name: '中证红利',
+    tx: 'sh000922',
+    csindex: '000922',
+  },
+  // 中证人工智能主题（930713）：腾讯/新浪均无历史，仅中证官网有
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '1.930713',
+    code: '930713',
+    name: '中证人工智能主题',
+    csindex: '930713',
+  },
+  // 中证沪港深高股息（930917，即"沪港深高股息精选"）：仅中证官网有
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '1.930917',
+    code: '930917',
+    name: '中证沪港深高股息',
+    csindex: '930917',
+  },
+  // 黄金基准（Au99.99）：无公开指数历史源，用华安黄金ETF(518880) 近似（跟踪Au99.99）
+  {
+    group: '基准指数',
+    benchOnly: true,
+    secid: '1.518880',
+    code: '518880',
+    name: '华安黄金ETF(Au99.99近似)',
+    tx: 'sh518880',
   },
 ]
 
@@ -77,7 +224,8 @@ const PUSH_HOSTS = [
 ]
 
 export async function getIndices() {
-  const secids = INDEX_LIST.map((i) => i.secid).join(',')
+  const visibleIndexes = INDEX_LIST.filter((i) => !i.benchOnly)
+  const secids = visibleIndexes.map((i) => i.secid).join(',')
   const data = await eastmoneyGet(
     '/api/qt/ulist.np/get',
     {
@@ -94,7 +242,7 @@ export async function getIndices() {
   const numberOrNull = (value) =>
     typeof value === 'number' && Number.isFinite(value) ? value : null
 
-  return INDEX_LIST.map((item) => {
+  return visibleIndexes.map((item) => {
     const row = byCode.get(item.code) || byCode.get(item.secid.split('.')[1])
     return {
       code: item.code,
@@ -392,6 +540,34 @@ async function fetchSinaCnDaily(symbol, limit) {
     .filter((p) => p.date && p.close != null)
 }
 
+/**
+ * 中证指数官网全历史日线（覆盖 2004 年至今，中证 000/930/931/H30 系列均可）。
+ * 腾讯/新浪缺失的中证主题指数（人工智能、沪港深高股息等）唯一可用的公开源。
+ */
+async function fetchCsindexDaily(indexCode, limit) {
+  const res = await axios.get(
+    'https://www.csindex.com.cn/csindex-home/perf/index-perf',
+    {
+      timeout: 20000,
+      headers: {'User-Agent': ua, Referer: 'https://www.csindex.com.cn/'},
+      params: {indexCode, startDate: '20040101', endDate: '20991231'},
+    },
+  )
+  const rows = Array.isArray(res.data?.data) ? res.data.data : []
+  const points = rows
+    .map((row) => {
+      const d = String(row.tradeDate || '')
+      const close = parseFloat(row.close)
+      if (d.length !== 8 || !Number.isFinite(close)) return null
+      return {
+        date: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
+        close,
+      }
+    })
+    .filter((p) => p)
+  return limit && points.length > limit ? points.slice(-limit) : points
+}
+
 async function fetchSinaUsDaily(symbol, limit) {
   const res = await axios.get(
     'https://stock.finance.sina.com.cn/usstock/api/json.php/US_MinKService.getDailyK',
@@ -563,4 +739,71 @@ export async function getIndexHistory(code, range = '1m') {
     periodPercent,
     points: filtered,
   }
+}
+
+/**
+ * 指数全量历史日线（用于基金业绩基准对比，需覆盖基金成立以来完整区间）
+ * @param {string} code 指数代码（见 INDEX_LIST）
+ * @returns {Promise<{code:string, name:string, points: Array<{date:string, close:number}>}>}
+ */
+/**
+ * 数据新鲜度检查：最后一条行情距今超过 12 天视为过期（覆盖长假），
+ * 防止"有数据但已停更"的源（如新浪 000922 停在 2019 年）被误用。
+ */
+function isIndexFresh(points) {
+  if (!points.length) return false
+  const last = points[points.length - 1]
+  const t = Date.parse(last.date)
+  if (!Number.isFinite(t)) return false
+  return Date.now() - t < 12 * 24 * 3600 * 1000
+}
+
+export async function getIndexFullHistory(code) {
+  const meta = findIndexMeta(code)
+  if (!meta) throw new Error(`未知指数 ${code}`)
+  const EM_LIMIT = 3500
+  const TX_LIMIT = 2000
+  const SINA_LIMIT = 3500
+  let points = []
+  // 中证官网全历史最完整，标记了 csindex 的指数优先使用
+  if (meta.csindex) {
+    try {
+      points = await fetchCsindexDaily(meta.csindex, 6000)
+    } catch {
+      points = []
+    }
+  }
+  if (!isIndexFresh(points)) {
+    try {
+      points = await fetchEastmoneyDaily(meta.secid, EM_LIMIT)
+    } catch {
+      points = []
+    }
+  }
+  // A股指数：腾讯 tx 符号（sh/sz 开头）可直接复用为新浪兜底源，覆盖更长历史
+  const sinaSymbol = meta.sina || (meta.tx && /^s[hz]/.test(meta.tx) ? meta.tx : undefined)
+  // 新浪历史较长，优先于腾讯；但需通过新鲜度检查，过期数据继续走腾讯兜底
+  if (!isIndexFresh(points) && sinaSymbol) {
+    try {
+      points = await fetchSinaCnDaily(sinaSymbol, SINA_LIMIT)
+    } catch {
+      points = []
+    }
+  }
+  if (!isIndexFresh(points) && meta.tx) {
+    try {
+      points = await fetchTencentDaily(meta.tx, TX_LIMIT)
+    } catch {
+      points = []
+    }
+  }
+  if (!isIndexFresh(points) && meta.sinaUs) {
+    try {
+      points = await fetchSinaUsDaily(meta.sinaUs, SINA_LIMIT)
+    } catch {
+      points = []
+    }
+  }
+  if (!isIndexFresh(points)) throw new Error(`暂无 ${meta.name} 有效历史行情`)
+  return {code: meta.code, name: meta.name, points}
 }

@@ -9,6 +9,8 @@ import {
   fetchFundSectorsQueued,
   fetchFundFtype,
   getFundHistory,
+  getFundDetail,
+  getFundPerformance,
   isConfirmedSessionActive,
   isDelayedNavFund,
 } from './services/fund.js'
@@ -253,6 +255,32 @@ router.get('/funds/:code/history', async (ctx) => {
     ctx.body = {success: true, data}
   } catch (e) {
     ctx.status = 400
+    ctx.body = {success: false, message: e.message}
+  }
+})
+
+/**
+ * 基金详情：基本信息 + 基金经理 + 费率 + 前十大持仓 + 持仓股行情
+ */
+router.get('/funds/:code/detail', async (ctx) => {
+  try {
+    const data = await getFundDetail(ctx.params.code)
+    ctx.body = {success: true, data}
+  } catch (e) {
+    ctx.status = 500
+    ctx.body = {success: false, message: e.message}
+  }
+})
+
+/**
+ * 基金业绩走势：基金累计收益 vs 业绩比较基准（匹配对应指数），覆盖 7 个周期
+ */
+router.get('/funds/:code/performance', async (ctx) => {
+  try {
+    const data = await getFundPerformance(ctx.params.code)
+    ctx.body = {success: true, data}
+  } catch (e) {
+    ctx.status = 500
     ctx.body = {success: false, message: e.message}
   }
 })

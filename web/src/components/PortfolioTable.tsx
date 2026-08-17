@@ -1,5 +1,5 @@
 import {useState} from 'react'
-import {ChevronDown, ChevronRight, Pencil, Plus, Trash2} from 'lucide-react'
+import {ChevronDown, ChevronRight, Info, Pencil, Plus, Trash2} from 'lucide-react'
 import {
   createHolding,
   removeHolding,
@@ -17,6 +17,7 @@ import {Button} from '@/components/ui/button'
 import {Panel, PanelHeader} from '@/components/ui/panel'
 import {FundFormDialog} from '@/components/FundFormDialog'
 import {FundTrendDialog} from '@/components/FundTrendDialog'
+import {FundDetailDrawer} from '@/components/FundDetailDrawer'
 
 export function PortfolioTable({
   data,
@@ -35,6 +36,9 @@ export function PortfolioTable({
   const [editing, setEditing] = useState<FundQuoteRow | null>(null)
   const [trendRow, setTrendRow] = useState<FundQuoteRow | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [detailCode, setDetailCode] = useState<string | null>(null)
+  const [detailName, setDetailName] = useState<string | undefined>(undefined)
+  const [detailOpen, setDetailOpen] = useState(false)
 
   const defaultPortfolioId = activePortfolioId || portfolios[0]?.id || ''
 
@@ -70,6 +74,12 @@ export function PortfolioTable({
   function handleMove(row: FundQuoteRow, targetPortfolioId: string) {
     moveHolding(row.id, targetPortfolioId)
     onChanged()
+  }
+
+  function openDetail(code: string, name?: string) {
+    setDetailCode(code)
+    setDetailName(name)
+    setDetailOpen(true)
   }
 
   const portfolioResults = data?.portfolios || []
@@ -163,6 +173,7 @@ export function PortfolioTable({
                       onDelete={handleDelete}
                       onMove={handleMove}
                       onTrend={setTrendRow}
+                      onDetail={openDetail}
                     />
                   ) : null}
                 </div>
@@ -183,6 +194,7 @@ export function PortfolioTable({
               onDelete={handleDelete}
               onMove={handleMove}
               onTrend={setTrendRow}
+              onDetail={openDetail}
             />
           </div>
         ) : (
@@ -217,6 +229,12 @@ export function PortfolioTable({
               .map((point) => ({time: point.time, value: point.growth as number}))}
           />
         ) : null}
+        <FundDetailDrawer
+          code={detailCode}
+          name={detailName}
+          open={detailOpen}
+          onOpenChange={setDetailOpen}
+        />
       </Panel>
     </section>
   )
@@ -232,6 +250,7 @@ function HoldingsTable({
   onDelete,
   onMove,
   onTrend,
+  onDetail,
 }: {
   rows: FundQuoteRow[]
   portfolios: Portfolio[]
@@ -240,6 +259,7 @@ function HoldingsTable({
   onDelete: (row: FundQuoteRow) => void
   onMove: (row: FundQuoteRow, targetPortfolioId: string) => void
   onTrend: (row: FundQuoteRow) => void
+  onDetail: (code: string, name?: string) => void
 }) {
   const otherPortfolios = portfolios.filter((p) => p.id !== currentPortfolioId)
 
@@ -272,8 +292,16 @@ function HoldingsTable({
                 >
                   {row.name}
                 </button>
-                <div className="mt-1 flex items-center gap-2 font-mono text-xs text-muted">
+                <div className="mt-1 flex items-center gap-1.5 font-mono text-xs text-muted">
                   <span>{row.code}</span>
+                  <button
+                    type="button"
+                    className="text-muted transition-colors hover:text-accent"
+                    title={`查看 ${row.name} 详情`}
+                    onClick={() => onDetail(row.code, row.name)}
+                  >
+                    <Info className="h-3 w-3" />
+                  </button>
                   {row.netValueDate ? <span>净值 {row.netValueDate.slice(5)}</span> : null}
                 </div>
                 {row.quoteError ? (

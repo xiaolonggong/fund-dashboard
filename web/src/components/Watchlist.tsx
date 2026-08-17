@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react'
-import {Plus, Trash2} from 'lucide-react'
+import {Info, Plus, Trash2} from 'lucide-react'
 import {
   createWatchFund,
   removeWatchFund,
@@ -18,6 +18,7 @@ import {Label} from '@/components/ui/label'
 import {Panel, PanelHeader} from '@/components/ui/panel'
 import {SparkTrend} from '@/components/SparkTrend'
 import {FundSearchInput} from '@/components/FundSearchInput'
+import {FundDetailDrawer} from '@/components/FundDetailDrawer'
 
 export function Watchlist({
   rows,
@@ -31,6 +32,9 @@ export function Watchlist({
   onChanged: () => void
 }) {
   const [open, setOpen] = useState(false)
+  const [detailCode, setDetailCode] = useState<string | null>(null)
+  const [detailName, setDetailName] = useState<string | undefined>(undefined)
+  const [detailOpen, setDetailOpen] = useState(false)
   const now = new Date()
 
   return (
@@ -82,8 +86,20 @@ export function Watchlist({
                     <tr key={row.code}>
                       <td>
                         <div className="font-medium text-ink">{row.name}</div>
-                        <div className="mt-1 font-mono text-xs text-muted">
-                          {row.code}
+                        <div className="mt-1 flex items-center gap-1.5 font-mono text-xs text-muted">
+                          <span>{row.code}</span>
+                          <button
+                            type="button"
+                            className="text-muted transition-colors hover:text-accent"
+                            title={`查看 ${row.name} 详情`}
+                            onClick={() => {
+                              setDetailCode(row.code)
+                              setDetailName(row.name)
+                              setDetailOpen(true)
+                            }}
+                          >
+                            <Info className="h-3 w-3" />
+                          </button>
                         </div>
                         {row.error ? (
                           <div className="mt-1 text-xs text-rise">行情暂不可用</div>
@@ -138,6 +154,12 @@ export function Watchlist({
           open={open}
           onOpenChange={setOpen}
           onAdded={onChanged}
+        />
+        <FundDetailDrawer
+          code={detailCode}
+          name={detailName}
+          open={detailOpen}
+          onOpenChange={setDetailOpen}
         />
       </Panel>
     </section>

@@ -607,3 +607,175 @@
     animation-iteration-count: 1 !important;
   }
 }
+
+/* ---- Sheet / Drawer ---- */
+@keyframes sheet-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sheet-overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes sheet-slide-right-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes sheet-slide-right-out {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+.sheet-overlay[data-state='open'] {
+  animation: sheet-overlay-in 200ms ease-out;
+}
+
+.sheet-overlay[data-state='closed'] {
+  animation: sheet-overlay-out 150ms ease-in;
+}
+
+.sheet-slide-right[data-state='open'] {
+  animation: sheet-slide-right-in 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sheet-slide-right[data-state='closed'] {
+  animation: sheet-slide-right-out 200ms ease-in;
+}
+
+/* ---- 基金详情抽屉 ---- */
+.detail-section {
+  margin-bottom: 24px;
+}
+
+.detail-section-title {
+  margin: 0 0 10px;
+  color: var(--app-ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.detail-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+}
+
+.detail-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.detail-info-label {
+  color: var(--app-muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+}
+
+.detail-info-value {
+  color: var(--app-ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.holding-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.holding-detail-table th {
+  border-bottom: 1px solid var(--app-line);
+  padding: 8px 6px;
+  color: var(--app-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.holding-detail-table td {
+  border-bottom: 1px solid #f0efe9;
+  padding: 8px 6px;
+  vertical-align: middle;
+}
+
+.holding-detail-table tbody tr:hover {
+  background: #faf7f2;
+}
+
+.holding-detail-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.fee-rate-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0efe9;
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.fee-rate-row:last-child {
+  border-bottom: 0;
+}
+
+.fee-rate-label {
+  color: var(--app-ink-soft);
+}
+
+.fee-rate-value {
+  color: var(--app-ink);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.manager-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--app-line);
+  border-radius: var(--radius-md);
+  background: var(--app-paper);
+}
+
+.manager-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--app-paper-deep);
+  display: grid;
+  place-items: center;
+  color: var(--app-muted);
+  font-size: 18px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.manager-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.manager-name {
+  color: var(--app-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.manager-meta {
+  margin-top: 2px;
+  color: var(--app-muted);
+  font-size: 11px;
+}
